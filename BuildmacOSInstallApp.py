@@ -17,7 +17,7 @@ class buildMacOSInstallApp:
             "AppleDiagnostics.chunklist"
         ]
         # Verify we're on macOS - this doesn't work anywhere else
-        if not sys.platform == "darwin":
+        if sys.platform != "darwin":
             self.u.head("WARNING")
             print("")
             print("This script only runs on macOS!")
@@ -32,19 +32,30 @@ class buildMacOSInstallApp:
         out = self.r.run({"args":args})
         if out[2] != 0:
             # Failed!
-            raise Exception("Mount Failed!", "{} failed to mount:\n\n{}".format(os.path.basename(dmg), out[1]))
+            raise Exception(
+                "Mount Failed!",
+                f"{os.path.basename(dmg)} failed to mount:\n\n{out[1]}",
+            )
+
         # Get the plist data returned, and locate the mount points
         try:
             plist_data = plist.loads(out[0])
-            mounts = [x["mount-point"] for x in plist_data.get("system-entities", []) if "mount-point" in x]
-            return mounts
+            return [
+                x["mount-point"]
+                for x in plist_data.get("system-entities", [])
+                if "mount-point" in x
+            ]
+
         except:
-            raise Exception("Mount Failed!", "No mount points returned from {}".format(os.path.basename(dmg)))
+            raise Exception(
+                "Mount Failed!",
+                f"No mount points returned from {os.path.basename(dmg)}",
+            )
 
     def unmount_dmg(self, mount_point):
         # Unmounts the passed dmg or mount point - retries with force if failed
         # Can take either a single point or a list
-        if not type(mount_point) is list:
+        if type(mount_point) is not list:
             mount_point = [mount_point]
         unmounted = []
         for m in mount_point:    
@@ -54,10 +65,10 @@ class buildMacOSInstallApp:
                 # Polite failed, let's crush this b!
                 args.append("-force")
                 out = self.r.run({"args":args})
-                if out[2] != 0:
-                    # Oh... failed again... onto the next...
-                    print(out[1])
-                    continue
+            if out[2] != 0:
+                # Oh... failed again... onto the next...
+                print(out[1])
+                continue
             unmounted.append(m)
         return unmounted
 
@@ -81,7 +92,10 @@ class buildMacOSInstallApp:
                 f_path = os.path.dirname(os.path.realpath(f_path))
             # Walk the contents of f_path and ensure we have all the needed files
             lower_contents = [y.lower() for y in os.listdir(f_path)]
-            missing_list = [x for x in self.target_files if not x.lower() in lower_contents]
+            missing_list = [
+                x for x in self.target_files if x.lower() not in lower_contents
+            ]
+
             if len(missing_list):
                 self.u.head("Missing Required Files")
                 print("")
@@ -98,7 +112,7 @@ class buildMacOSInstallApp:
                 print("")
                 print("Taking ownership of downloaded files...")
                 for x in self.target_files:
-                    print(" - {}...".format(x))
+                    print(f" - {x}...")
                     self.r.run({"args":["chmod","a+x",x]})
                 print("Mounting BaseSystem.dmg...")
                 base_mounts = self.mount_dmg("BaseSystem.dmg")
@@ -108,8 +122,8 @@ class buildMacOSInstallApp:
                 print("Locating Installer app...")
                 install_app = next((x for x in os.listdir(base_mount) if os.path.isdir(os.path.join(base_mount,x)) and x.lower().endswith(".app") and not x.startswith(".")),None)
                 if not install_app:
-                    raise Exception("Installer app not located in {}".format(base_mount))
-                print(" - Found {}".format(install_app))
+                    raise Exception(f"Installer app not located in {base_mount}")
+                print(f" - Found {install_app}")
                 # Copy the .app over
                 out = self.r.run({"args":["cp","-R",os.path.join(base_mount,install_app),os.path.join(f_path,install_app)]})
                 if out[2] != 0:
@@ -125,7 +139,7 @@ class buildMacOSInstallApp:
                 print("Copying files to SharedSupport...")
                 for x in self.target_files:
                     y = "InstallESD.dmg" if x.lower() == "installesddmg.pkg" else x # InstallESDDmg.pkg gets renamed to InstallESD.dmg - all others stay the same
-                    print(" - {}{}".format(x, " --> {}".format(y) if y != x else ""))
+                    print(f' - {x}{f" --> {y}" if y != x else ""}')
                     out = self.r.run({"args":["cp","-R",os.path.join(f_path,x),os.path.join(shared_support,y)]})
                     if out[2] != 0:
                         raise Exception("Copy Failed!", out[1])
@@ -141,17 +155,17 @@ class buildMacOSInstallApp:
                 with open(os.path.join(shared_support,"InstallInfo.plist"),"wb") as f:
                     plist.dump(p,f)
                 print("")
-                print("Created:  {}".format(install_app))
-                print("Saved to: {}".format(os.path.join(f_path,install_app)))
+                print(f"Created:  {install_app}")
+                print(f"Saved to: {os.path.join(f_path, install_app)}")
                 print("")
                 self.u.grab("Press [enter] to return...")
             except Exception as e:
                 print("An error occurred:")
-                print(" - {}".format(e))
+                print(f" - {e}")
                 print("")
                 if len(base_mounts):
                     for x in base_mounts:
-                        print(" - Unmounting {}...".format(x))
+                        print(f" - Unmounting {x}...")
                         self.unmount_dmg(x)
                     print("")
                 self.u.grab("Press [enter] to return...")

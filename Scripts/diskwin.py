@@ -28,7 +28,7 @@ class Disk:
         disks = self.r.run({"args":[self.wmic, "diskdrive", "get", "deviceid,model,index,size,partitions", "/format:csv"]})[0]
         csdisk = csv.reader(disks.replace("\r","").split("\n"), delimiter=",")
         disks = list(csdisk)
-        if not len(disks) > 3:
+        if len(disks) <= 3:
             # Not enough info there - csv is like:
             # 1. Empty row
             # 2. Headers
@@ -45,15 +45,14 @@ class Disk:
             if len(ds) < 5:
                 continue
             p_disks[ds[1]] = {
-                "device":ds[0],
-                "model":" ".join(ds[2:-2]),
-                "type":0 # 0 = Unknown, 1 = No Root Dir, 2 = Removable, 3 = Local, 4 = Network, 5 = Disc, 6 = RAM disk
-                }
-            # More fault-tolerance with ints
-            p_disks[ds[1]]["index"] = int(ds[1]) if len(ds[1]) else -1
-            p_disks[ds[1]]["size"] = int(ds[-1]) if len(ds[-1]) else -1
-            p_disks[ds[1]]["partitioncount"] = int(ds[-2]) if len(ds[-2]) else 0
-            
+                "device": ds[0],
+                "model": " ".join(ds[2:-2]),
+                "type": 0,
+                "index": int(ds[1]) if len(ds[1]) else -1,
+                "size": int(ds[-1]) if len(ds[-1]) else -1,
+                "partitioncount": int(ds[-2]) if len(ds[-2]) else 0,
+            }
+
         if not len(p_disks):
             # Drat, nothing
             return p_disks
@@ -70,17 +69,15 @@ class Disk:
                 mp = s.split("deviceid=")[2].split('"')[1].upper()
             except:
                 pass
-            if any([d, p, mp]):
-                # Got *something*
-                if p_disks.get(d,None):
-                    if not p_disks[d].get("partitions",None):
-                        p_disks[d]["partitions"] = {}
-                    p_disks[d]["partitions"][p] = {"letter":mp}
+            if any([d, p, mp]) and p_disks.get(d, None):
+                if not p_disks[d].get("partitions",None):
+                    p_disks[d]["partitions"] = {}
+                p_disks[d]["partitions"][p] = {"letter":mp}
         # Last attempt to do this - let's get the partition names!
         parts = self.r.run({"args":[self.wmic, "logicaldisk", "get", "deviceid,filesystem,volumename,size,drivetype", "/format:csv"]})[0]
         cspart = csv.reader(parts.replace("\r","").split("\n"), delimiter=",")
         parts = list(cspart)
-        if not len(parts) > 2:
+        if len(parts) <= 2:
             return p_disks
         parts = parts[2:-1]
         for p in parts:
@@ -101,8 +98,7 @@ class Disk:
                 pnm = ps[4] # get the rest in the name
             except:
                 pass
-            for d in p_disks:
-                p_dict = p_disks[d]
+            for d, p_dict in p_disks.items():
                 for pr in p_dict.get("partitions",{}):
                     pr = p_dict["partitions"][pr]
                     if pr.get("letter","").upper() == plt.upper():

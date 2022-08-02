@@ -58,7 +58,7 @@ class WinUSB:
         self.u.head("Verifying OS")
         print("")
         print("Verifying OS name...")
-        if not os.name=="nt":
+        if os.name != "nt":
             print("")
             print("This script is only for Windows!")
             print("")
@@ -77,20 +77,23 @@ class WinUSB:
             plat = 0
         if plat < self.min_plat:
             print("")
-            print("Currently running {}, this script requires version {} or newer.".format(platform.platform(), self.min_plat))
+            print(
+                f"Currently running {platform.platform()}, this script requires version {self.min_plat} or newer."
+            )
+
             print("")
             self.u.grab("Press [enter] to exit...")
             exit(1)
-        print(" - Version = {}".format(plat))
+        print(f" - Version = {plat}")
         print("")
-        print("{} >= {}, continuing...".format(plat, self.min_plat))
+        print(f"{plat} >= {self.min_plat}, continuing...")
 
     def get_disks_of_type(self, disk_list, disk_type=(0,2)):
-        disks = {}
-        for disk in disk_list:
-            if disk_list[disk].get("type",0) in disk_type:
-                disks[disk] = disk_list[disk]
-        return disks
+        return {
+            disk: disk_list[disk]
+            for disk in disk_list
+            if disk_list[disk].get("type", 0) in disk_type
+        }
 
     def check_dd(self):
         # Checks if ddrelease64.exe exists in our Scripts dir
@@ -103,7 +106,7 @@ class WinUSB:
             # print("Located {}!".format(self.dd_name))
             # Got it
             return True
-        print("Couldn't locate {} - downloading...".format(self.dd_name))
+        print(f"Couldn't locate {self.dd_name} - downloading...")
         temp = tempfile.mkdtemp()
         z_file = os.path.basename(self.dd_url)
         # Now we need to download
@@ -117,8 +120,8 @@ class WinUSB:
         for x in os.listdir(temp):
             if self.dd_name.lower() == x.lower():
                 # Found it
-                print(" - Found {}".format(x))
-                print("   - Copying to {} directory...".format(self.scripts))
+                print(f" - Found {x}")
+                print(f"   - Copying to {self.scripts} directory...")
                 shutil.copy(os.path.join(temp,x), os.path.join(self.s_path,x))
         # Return to prior cwd
         os.chdir(cwd)
@@ -131,7 +134,7 @@ class WinUSB:
         self.z_path = self.z_path64 if os.path.exists(self.z_path64) else self.z_path32 if os.path.exists(self.z_path32) else None
         if self.z_path:
             return True
-        print("Didn't locate {} - downloading...".format(self.z_name))
+        print(f"Didn't locate {self.z_name} - downloading...")
         # Didn't find it - let's do some stupid stuff
         # First we get our json response - or rather, try to, then parse it
         # looking for the current version
@@ -156,7 +159,7 @@ class WinUSB:
         out = self.r.run({"args":["msiexec", "/qn", "/i", os.path.join(temp, self.z_name)],"stream":True})
         if out[2] != 0:
             shutil.rmtree(temp,ignore_errors=True)
-            print("Error ({})".format(out[2]))
+            print(f"Error ({out[2]})")
             print("")
             self.u.grab("Press [enter] to exit...")
             exit(1)
@@ -171,7 +174,7 @@ class WinUSB:
             # print("Located {}!".format(self.bi_name))
             # Got it
             return True
-        print("Couldn't locate {} - downloading...".format(self.bi_name))
+        print(f"Couldn't locate {self.bi_name} - downloading...")
         self.dl.stream_to_file(self.bi_url, os.path.join(self.s_path, self.bi_name))
         print("")
         return os.path.exists(os.path.join(self.s_path,self.bi_name))
@@ -183,9 +186,15 @@ class WinUSB:
         for j in j_list:
             dl_link = next((x.get("browser_download_url", None) for x in j.get("assets", []) if x.get("browser_download_url", "").lower().endswith(suffix.lower())), None)
             if dl_link: break
-        if not dl_link:
-            return None
-        return { "url" : dl_link, "name" : os.path.basename(dl_link), "info" : j.get("body", None) }
+        return (
+            {
+                "url": dl_link,
+                "name": os.path.basename(dl_link),
+                "info": j.get("body", None),
+            }
+            if dl_link
+            else None
+        )
 
     def get_dl_info(self,clover_version=None):
         # Returns the latest download package and info in a
@@ -193,31 +202,41 @@ class WinUSB:
         # Attempt Dids' repo first - falling back on Clover's official repo as needed
         for url in (self.dids_url,self.clover_url):
             # Tag is 5098 on Slice's repo, and v2.5k_r5098 on Dids' - accommodate as needed
-            search_url = url if clover_version == None else "{}/tags/{}".format(url,clover_version if url == self.clover_url else "v2.{}k_r{}".format(clover_version[0],clover_version))
-            print(" - Checking {}".format(search_url))
-            json_data = self.dl.get_string(search_url, False)
-            if not json_data: print(" --> Not found!")
-            else: return self.get_dl_url_from_json(json_data)
+            search_url = (
+                url
+                if clover_version is None
+                else f'{url}/tags/{clover_version if url == self.clover_url else f"v2.{clover_version[0]}k_r{clover_version}"}'
+            )
+
+            print(f" - Checking {search_url}")
+            if json_data := self.dl.get_string(search_url, False):
+                return self.get_dl_url_from_json(json_data)
+            else:
+                if not json_data: print(" --> Not found!")
         return None
 
     def get_oc_dl_info(self):
-        json_data = self.dl.get_string(self.oc_url, False)
-        if not json_data: print(" --> Not found!")
-        else: return self.get_dl_url_from_json(json_data,"-RELEASE.zip")
+        if json_data := self.dl.get_string(self.oc_url, False):
+            return self.get_dl_url_from_json(json_data,"-RELEASE.zip")
+        else:
+            if not json_data: print(" --> Not found!")
 
     def diskpart_flag(self, disk, as_efi=False):
         # Sets and unsets the GUID needed for a GPT EFI partition ID
         self.u.head("Changing ID With DiskPart")
         print("")
-        print("Setting type as {}...".format("EFI" if as_efi else "Basic Data"))
+        print(f'Setting type as {"EFI" if as_efi else "Basic Data"}...')
         print("")
         # - EFI system partition: c12a7328-f81f-11d2-ba4b-00a0c93ec93b
         # - Basic data partition: ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
-        dp_script = "\n".join([
-            "select disk {}".format(disk.get("index",-1)),
-            "sel part 1",
-            "set id={}".format(self.efi_id if as_efi else self.bas_id)
-        ])
+        dp_script = "\n".join(
+            [
+                f'select disk {disk.get("index", -1)}',
+                "sel part 1",
+                f"set id={self.efi_id if as_efi else self.bas_id}",
+            ]
+        )
+
         temp = tempfile.mkdtemp()
         script = os.path.join(temp, "diskpart.txt")
         try:
@@ -236,7 +255,7 @@ class WinUSB:
         print("")
         if out[2] != 0:
             # Error city!
-            print("DiskPart exited with non-zero status ({}).  Aborting.".format(out[2]))
+            print(f"DiskPart exited with non-zero status ({out[2]}).  Aborting.")
         else:
             print("Done - You may need to replug your drive for the")
             print("changes to take effect.")
@@ -254,29 +273,35 @@ class WinUSB:
         # data partition.
         if not gpt:
             print("Using MBR...")
-            dp_script = "\n".join([
-                "select disk {}".format(disk.get("index",-1)),
-                "clean",
-                "convert mbr",
-                "create partition primary size=200",
-                "format quick fs=fat32 label='BOOT'",
-                "active",
-                "create partition primary",
-                "select part 2",
-                "set id=AB", # AF = HFS, AB = Recovery
-                "select part 1",
-                "assign"
-            ])
+            dp_script = "\n".join(
+                [
+                    f'select disk {disk.get("index", -1)}',
+                    "clean",
+                    "convert mbr",
+                    "create partition primary size=200",
+                    "format quick fs=fat32 label='BOOT'",
+                    "active",
+                    "create partition primary",
+                    "select part 2",
+                    "set id=AB",
+                    "select part 1",
+                    "assign",
+                ]
+            )
+
         else:
             print("Using GPT...")
-            dp_script = "\n".join([
-                "select disk {}".format(disk.get("index",-1)),
-                "clean",
-                "convert gpt",
-                "create partition primary size=200",
-                "format quick fs=fat32 label='BOOT'",
-                "create partition primary id={}".format(self.hfs_id)
-            ])
+            dp_script = "\n".join(
+                [
+                    f'select disk {disk.get("index", -1)}',
+                    "clean",
+                    "convert gpt",
+                    "create partition primary size=200",
+                    "format quick fs=fat32 label='BOOT'",
+                    f"create partition primary id={self.hfs_id}",
+                ]
+            )
+
         temp = tempfile.mkdtemp()
         script = os.path.join(temp, "diskpart.txt")
         try:
@@ -295,7 +320,7 @@ class WinUSB:
         if out[2] != 0:
             # Error city!
             print("")
-            print("DiskPart exited with non-zero status ({}).  Aborting.".format(out[2]))
+            print(f"DiskPart exited with non-zero status ({out[2]}).  Aborting.")
             print("")
             self.u.grab("Press [enter] to return...")
             return
@@ -305,7 +330,7 @@ class WinUSB:
         print("")
         print("Re-populating list...")
         self.d.update()
-        print("Relocating disk {}".format(disk["index"]))
+        print(f'Relocating disk {disk["index"]}')
         disk = self.d.disks[str(disk["index"])]
         self.select_package(disk, clover_version)
 
@@ -346,7 +371,10 @@ class WinUSB:
         if not path.lower().endswith(self.recovery_suffixes):
             self.u.head("Invalid Package")
             print("")
-            print("{} is not in the available recovery package names:\n{}".format(os.path.basename(path), ", ".join(self.recovery_suffixes)))
+            print(
+                f'{os.path.basename(path)} is not in the available recovery package names:\n{", ".join(self.recovery_suffixes)}'
+            )
+
             print("")
             print("Ensure you're passing a proper recovery package.")
             print("")
@@ -363,7 +391,7 @@ class WinUSB:
         out = self.r.run({"args":[self.z_path, "e", "-txar", path, "*.dmg"]})
         if out[2] != 0:
             shutil.rmtree(temp,ignore_errors=True)
-            print("An error occurred extracting: {}".format(out[2]))
+            print(f"An error occurred extracting: {out[2]}")
             print("")
             self.u.grab("Press [enter] to return...")
             return
@@ -372,13 +400,18 @@ class WinUSB:
         out = self.r.run({"args":[self.z_path, "e", "*.dmg", "*/Base*.dmg"]})
         if out[2] != 0:
             shutil.rmtree(temp,ignore_errors=True)
-            print("An error occurred extracting: {}".format(out[2]))
+            print(f"An error occurred extracting: {out[2]}")
             print("")
             self.u.grab("Press [enter] to return...")
             return
         # If we got here - we should delete everything in the temp folder except
         # for a .dmg that starts with Base
-        del_list = [x for x in os.listdir(temp) if not (x.lower().startswith("base") and x.lower().endswith(".dmg"))]
+        del_list = [
+            x
+            for x in os.listdir(temp)
+            if not x.lower().startswith("base") or not x.lower().endswith(".dmg")
+        ]
+
         for d in del_list:
             os.remove(os.path.join(temp, d))
         # Onto the last command
@@ -386,7 +419,7 @@ class WinUSB:
         out = self.r.run({"args":[self.z_path, "e", "-tdmg", "Base*.dmg", "*.hfs"]})
         if out[2] != 0:
             shutil.rmtree(temp,ignore_errors=True)
-            print("An error occurred extracting: {}".format(out[2]))
+            print(f"An error occurred extracting: {out[2]}")
             print("")
             self.u.grab("Press [enter] to return...")
             return
@@ -396,21 +429,21 @@ class WinUSB:
         for d in del_list:
             os.remove(os.path.join(temp, d))
         print("Extracted successfully!")
-        hfs = next((x for x in os.listdir(temp) if x.lower().endswith(".hfs")),None)
-        # Now to dd our image - if it exists
-        if not hfs:
+        if hfs := next(
+            (x for x in os.listdir(temp) if x.lower().endswith(".hfs")), None
+        ):
+            self.dd_image(disk, os.path.join(temp, hfs), clover_version)
+        else:
             print("Missing the .hfs file!  Aborting.")
             print("")
             self.u.grab("Press [enter] to return...")
-        else:
-            self.dd_image(disk, os.path.join(temp, hfs), clover_version)
         shutil.rmtree(temp,ignore_errors=True)
 
     def dd_image(self, disk, image, clover_version = None):
         # Let's dd the shit out of our disk
         self.u.head("Copying Image To Drive")
         print("")
-        print("Image: {}".format(image))
+        print(f"Image: {image}")
         print("")
         print("Disk {}. {} - {} ({})".format(
             disk.get("index",-1), 
@@ -421,11 +454,12 @@ class WinUSB:
         print("")
         args = [
             os.path.join(self.s_path, self.dd_name),
-            "if={}".format(image),
-            "of=\\\\?\\Device\Harddisk{}\Partition2".format(disk.get("index",-1)),
+            f"if={image}",
+            f'of=\\\\?\\Device\Harddisk{disk.get("index", -1)}\Partition2',
             "bs=8M",
-            "--progress"
+            "--progress",
         ]
+
         print(" ".join(args))
         print("")
         print("This may take some time!")
@@ -436,7 +470,7 @@ class WinUSB:
             # status code.  It also sends a ton of text through stderr - so we comb
             # that for "Error" then split by that to skip the extra fluff and show only
             # the error.
-            print("An error occurred:\n\n{}".format("Error"+out[1].split("Error")[1]))
+            print(f'An error occurred:\n\n{"Error" + out[1].split("Error")[1]}')
             print("")
             self.u.grab("Press [enter] to return to the main menu...")
             return

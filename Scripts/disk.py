@@ -62,7 +62,6 @@ class Disk:
                 p = pa.root
         except Exception as e:
             print(e)
-            pass
         return p
 
     def _compare_versions(self, vers1, vers2, pad = -1):
@@ -73,37 +72,35 @@ class Disk:
         # vers1 > vers2 = False
         #
         # Must be separated with a period
-        
+
         # Sanitize the pads
-        pad = -1 if not type(pad) is int else pad
-        
+        pad = -1 if type(pad) is not int else pad
+
         # Cast as strings
         vers1 = str(vers1)
         vers2 = str(vers2)
-        
+
         # Split to lists
         v1_parts = vers1.split(".")
         v2_parts = vers2.split(".")
-        
+
         # Equalize lengths
         if len(v1_parts) < len(v2_parts):
-            v1_parts.extend([str(pad) for x in range(len(v2_parts) - len(v1_parts))])
+            v1_parts.extend([str(pad) for _ in range(len(v2_parts) - len(v1_parts))])
         elif len(v2_parts) < len(v1_parts):
-            v2_parts.extend([str(pad) for x in range(len(v1_parts) - len(v2_parts))])
-        
+            v2_parts.extend([str(pad) for _ in range(len(v1_parts) - len(v2_parts))])
+
         # Iterate and compare
         for i in range(len(v1_parts)):
             # Remove non-numeric
             v1 = ''.join(c for c in v1_parts[i] if c.isdigit())
             v2 = ''.join(c for c in v2_parts[i] if c.isdigit())
             # If empty - make it a pad var
-            v1 = pad if not len(v1) else v1
-            v2 = pad if not len(v2) else v2
+            v1 = v1 if len(v1) else pad
+            v2 = v2 if len(v2) else pad
             # Compare
-            if int(v1) < int(v2):
-                return True
-            elif int(v1) > int(v2):
-                return False
+            if int(v1) != int(v2):
+                return int(v1) < int(v2)
         # Never differed - return None, must be equal
         return None
 
@@ -140,27 +137,34 @@ class Disk:
 
     def get_disk_fs(self, disk):
         disk_id = self.get_identifier(disk)
-        if not disk_id:
-            return None
-        return self.get_disk_info(disk_id).get("FilesystemName", None)
+        return (
+            self.get_disk_info(disk_id).get("FilesystemName", None)
+            if disk_id
+            else None
+        )
 
     def get_disk_fs_type(self, disk):
         disk_id = self.get_identifier(disk)
-        if not disk_id:
-            return None
-        return self.get_disk_info(disk_id).get("FilesystemType", None)
+        return (
+            self.get_disk_info(disk_id).get("FilesystemType", None)
+            if disk_id
+            else None
+        )
 
     def get_apfs(self):
         # Returns a dictionary object of apfs disks
-        output = self.r.run({"args":"echo y | " + self.diskutil + " apfs list -plist", "shell" : True})
-        if not output[2] == 0:
+        output = self.r.run(
+            {"args": f"echo y | {self.diskutil} apfs list -plist", "shell": True}
+        )
+
+        if output[2] != 0:
             # Error getting apfs info - return an empty dict
             return {}
         disk_list = output[0]
         p_list = disk_list.split("<?xml")
         if len(p_list) > 1:
             # We had text before the start - get only the plist info
-            disk_list = "<?xml" + p_list[-1]
+            disk_list = f"<?xml{p_list[-1]}"
         return self._get_plist(disk_list)
 
     def is_apfs(self, disk):
@@ -169,7 +173,7 @@ class Disk:
             return None
         # Takes a disk identifier, and returns whether or not it's apfs
         for d in self.disks.get("AllDisksAndPartitions", []):
-            if not "APFSVolumes" in d:
+            if "APFSVolumes" not in d:
                 continue
             if d.get("DeviceIdentifier", "").lower() == disk_id.lower():
                 return True
@@ -206,11 +210,11 @@ class Disk:
 
     def is_core_storage(self, disk):
         disk_id = self.get_identifier(disk)
-        if not disk_id:
-            return None
-        if self._get_physical_disk(disk_id, "Logical Volume on "):
-            return True
-        return False
+        return (
+            bool(self._get_physical_disk(disk_id, "Logical Volume on "))
+            if disk_id
+            else None
+        )
 
     def get_identifier(self, disk):
         # Should be able to take a mount point, disk name, or disk identifier,
@@ -237,14 +241,16 @@ class Disk:
 
     def get_top_identifier(self, disk):
         disk_id = self.get_identifier(disk)
-        if not disk_id:
-            return None
-        return disk_id.replace("disk", "didk").split("s")[0].replace("didk", "disk")
+        return (
+            disk_id.replace("disk", "didk").split("s")[0].replace("didk", "disk")
+            if disk_id
+            else None
+        )
         
     def _get_physical_disk(self, disk, search_term):
         # Change disk0s1 to disk0
         our_disk = self.get_top_identifier(disk)
-        our_term = "/dev/" + our_disk
+        our_term = f"/dev/{our_disk}"
         found_disk = False
         our_text = ""
         for line in self.disk_text.split("\n"):
@@ -266,28 +272,31 @@ class Disk:
         if not len(our_stores):
             return None
         for store in our_stores:
-            efi = self.get_efi(store)
-            if efi:
+            if efi := self.get_efi(store):
                 return store
         return None
 
     def get_physical_store(self, disk):
-        # Returns the physical store containing the EFI
-        disk_id = self.get_identifier(disk)
-        if not disk_id:
+        if disk_id := self.get_identifier(disk):
+            return (
+                self._get_physical_disk(disk_id, "Physical Store ")
+                if self.is_apfs(disk_id)
+                else None
+            )
+
+        else:
             return None
-        if not self.is_apfs(disk_id):
-            return None
-        return self._get_physical_disk(disk_id, "Physical Store ")
 
     def get_core_storage_pv(self, disk):
-        # Returns the core storage physical volume containing the EFI
-        disk_id = self.get_identifier(disk)
-        if not disk_id:
+        if disk_id := self.get_identifier(disk):
+            return (
+                self._get_physical_disk(disk_id, "Logical Volume on ")
+                if self.is_core_storage(disk_id)
+                else None
+            )
+
+        else:
             return None
-        if not self.is_core_storage(disk_id):
-            return None
-        return self._get_physical_disk(disk_id, "Logical Volume on ")
 
     def get_parent(self, disk):
         # Disk can be a mount point, disk name, or disk identifier
@@ -336,9 +345,13 @@ class Disk:
         disk_id = self.get_identifier(disk)
         if not disk_id:
             return None
-        sudo = False
-        if not self._compare_versions(self.full_os_version, self.sudo_mount_version) and self.get_content(disk_id).lower() in self.sudo_mount_types:
-            sudo = True
+        sudo = (
+            not self._compare_versions(
+                self.full_os_version, self.sudo_mount_version
+            )
+            and self.get_content(disk_id).lower() in self.sudo_mount_types
+        )
+
         out = self.r.run({"args":[self.diskutil, "mount", disk_id], "sudo":sudo})
         self._update_disks()
         return out
@@ -421,9 +434,9 @@ class Disk:
         vol_list = []
         for v in self.get_mounted_volumes():
             i = self.get_identifier(os.path.join("/Volumes", v))
-            if i == None:
+            if i is None:
                 i = self.get_identifier("/")
-                if not self.get_volume_name(i) == v:
+                if self.get_volume_name(i) != v:
                     # Not valid and not our boot drive
                     continue
             vol_list.append({
@@ -457,7 +470,7 @@ class Disk:
                 continue
             if self.is_cs_container(d):
                 continue
-            if not parent in disks:
+            if parent not in disks:
                 disks[parent] = { "partitions" : [] }
             disks[parent]["partitions"].append({
                 "name" : self.get_volume_name(d),
